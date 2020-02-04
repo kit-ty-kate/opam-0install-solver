@@ -182,7 +182,7 @@ module Make (Context : S.CONTEXT) = struct
     Some (impl.Cudf.package, impl.Cudf.version)
 
   let virtual_role ~context impl =
-    {context with Role.name = impl.Cudf.package}
+    {Role.context; name = impl.Cudf.package}
 
   let virtual_impl ~depends () =
     let depends = List.map (fun pkg -> [(pkg, None)]) depends in
