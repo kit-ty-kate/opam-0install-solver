@@ -1,11 +1,3 @@
-let fop : Cudf_types.relop -> int -> int -> bool = function
-  | `Eq -> (=)
-  | `Neq -> (<>)
-  | `Geq -> (>=)
-  | `Gt -> (>)
-  | `Leq -> (<=)
-  | `Lt -> (<)
-
 module Context = struct
   type rejection = UserConstraint of Cudf_types.vpkg
 
@@ -37,7 +29,7 @@ module Context = struct
           let rec check_constr = function
             | [] -> (pkg.Cudf.version, None)
             | ((op, v)::c) ->
-                if fop op pkg.Cudf.version v then
+                if Model.fop op pkg.Cudf.version v then
                   check_constr c
                 else
                   (pkg.Cudf.version, Some (UserConstraint (name, Some (op, v))))  (* Reject *)
@@ -64,9 +56,11 @@ let requirements ~context pkgs =
   let role =
     match pkgs with
     | [pkg] -> Input.role context pkg
-    | pkgs ->
-      let impl = Input.virtual_impl ~context ~depends:pkgs () in
-      Input.virtual_role [impl]
+    | _pkgs ->
+(*      let impl = Input.virtual_impl ~context ~depends:pkgs () in
+        Input.virtual_role [impl] *)
+        (* TODO *)
+        assert false
   in
   { Input.role; command = None }
 

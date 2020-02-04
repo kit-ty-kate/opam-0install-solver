@@ -1,3 +1,5 @@
+val fop : Cudf_types.relop -> int -> int -> bool
+
 (** This module maps between the opam and 0install concepts. Roughly:
 
     - An opam package name is a 0install role.
@@ -22,7 +24,7 @@ module Make (Context : S.CONTEXT) : sig
   val version : impl -> (Cudf_types.pkgname * Cudf_types.version) option
   (** [version impl] is the Opam package for [impl], if any.
       Virtual and dummy implementations return [None]. *)
-
+(*
   val virtual_role : impl list -> Role.t
   (** [virtual_role impls] is a virtual package name with candidates [impls].
       This is used if the user requests multiple packages on the command line
@@ -33,4 +35,5 @@ module Make (Context : S.CONTEXT) : sig
       on [depends]. This is used if the user requests multiple packages on the
       command line - each requested package becomes a dependency of the virtual
       implementation. *)
+*)
 end
