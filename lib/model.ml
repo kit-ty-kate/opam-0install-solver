@@ -1,9 +1,9 @@
 module Make (Context : S.CONTEXT) = struct
-  type restriction = OpamFormula.version_formula
+  type restriction = Cudf_types.vpkgformula
 
   type real_role = {
     context : Context.t;
-    name : OpamPackage.Name.t;
+    name : Cudf_types.pkgname;
   }
 
   type role =
@@ -11,8 +11,7 @@ module Make (Context : S.CONTEXT) = struct
     | Virtual of int * impl list      (* (int just for sorting) *)
   and real_impl = {
     context : Context.t;
-    pkg : OpamPackage.t;
-    opam : OpamFile.OPAM.t;
+    pkg : Cudf.package;
     requires : dependency list;
   }
   and dependency = {
@@ -26,15 +25,15 @@ module Make (Context : S.CONTEXT) = struct
     | Dummy                                     (* Used for diagnostics *)
 
   let rec format_version = function
-    | RealImpl impl -> OpamPackage.Version.to_string (OpamPackage.version impl.pkg)
+    | RealImpl impl -> string_of_int impl.pkg.Cudf.version
     | VirtualImpl (_i, deps) -> String.concat "&" (List.map (fun d -> Fmt.to_to_string pp_role d.drole) deps)
     | Dummy -> "(no version)"
   and pp_impl f = function
-    | RealImpl impl -> Fmt.string f (OpamPackage.to_string impl.pkg)
+    | RealImpl impl -> Fmt.string f (impl.pkg.Cudf.package^"."^string_of_int impl.pkg.Cudf.version)
     | VirtualImpl _ as x -> Fmt.string f (format_version x)
     | Dummy -> Fmt.string f "(no solution found)"
   and pp_role f = function
-    | Real t -> Fmt.string f (OpamPackage.Name.to_string t.name)
+    | Real t -> Fmt.string f t.name
     | Virtual (_, impls) -> Fmt.pf f "%a" Fmt.(list ~sep:(unit "|") pp_impl) impls
 
   module Role = struct
@@ -44,7 +43,7 @@ module Make (Context : S.CONTEXT) = struct
 
     let compare a b =
       match a, b with
-      | Real a , Real b -> OpamPackage.Name.compare a.name b.name
+      | Real a , Real b -> String.compare a.name b.name
       | Virtual (ia, _), Virtual (ib, _) -> compare ia ib
       | _, _ -> compare a b
   end
@@ -127,19 +126,11 @@ module Make (Context : S.CONTEXT) = struct
   let machine_group _impl = None
 
   type conflict_class = string
+  let conflict_class _ = [] (* NOTE: I don't think you can define conflict classes in CUDF *)
 
-  let conflict_class = function
-    | RealImpl impl ->
-      OpamFile.OPAM.conflict_class impl.opam |> List.map OpamPackage.Name.to_string
-    | VirtualImpl _ -> []
-    | Dummy -> []
+  let ensure f = f
 
-  (* Opam uses conflicts, e.g.
-       conflicts if X {> 1} OR Y {< 1 OR > 2}
-     whereas 0install uses restricts, e.g.
-       restrict to X {<= 1} AND Y {>= 1 AND <= 2}
-   *)
-  let negate f =
+  let prevent f =
     let neg_version (op, v) = (OpamFormula.neg_relop op, v) in
     let neg_atom (a, vf) = (a, OpamFormula.neg neg_version vf) in
     OpamFormula.neg neg_atom f
@@ -155,20 +146,20 @@ module Make (Context : S.CONTEXT) = struct
         |> List.filter_map (function
             | _, Some _rejection -> None
             | version, None ->
-              let pkg = OpamPackage.create role.name version in
-              let opam = Context.load role.context pkg in
+              let pkg = (role.name, version) in
+              let p = Context.load role.context pkg in
               (* Note: we ignore depopts here: see opam/doc/design/depopts-and-features *)
               let requires =
-                let make_deps importance xform get =
-                  get opam
+                let make_deps importance xform data =
+                  data
                   |> Context.filter_deps context pkg
                   |> xform
                   |> list_deps ~context ~importance
                 in
-                make_deps `Essential Fun.id OpamFile.OPAM.depends @
-                make_deps `Restricts negate OpamFile.OPAM.conflicts
+                make_deps `Essential ensure p.Cudf.depends @
+                make_deps `Restricts prevent p.Cudf.conflicts
               in
-              Some (RealImpl { context; pkg; opam; requires })
+              Some (RealImpl { context; pkg = p; requires })
           )
       in
       { impls; replacement = None }
