@@ -57,8 +57,8 @@ let requirements ~context pkgs =
     match pkgs with
     | [pkg] -> Input.role context pkg
     | pkgs ->
-        let impl = Input.virtual_impl ~universe:context.Context.universe ~depends:pkgs () in
-        Input.virtual_role ~context impl
+        let impl = Input.virtual_impl ~context ~depends:pkgs () in
+        Input.virtual_role [impl]
   in
   { Input.role; command = None }
 
