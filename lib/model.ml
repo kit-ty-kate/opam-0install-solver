@@ -184,7 +184,9 @@ module Make (Context : S.CONTEXT) = struct
   let virtual_role ~context impl =
     {Role.context; name = impl.Cudf.package}
 
-  let virtual_impl ~depends () =
+  let virtual_impl ~universe ~depends () =
     let depends = List.map (fun pkg -> [(pkg, None)]) depends in
-    {dummy_impl with depends}
+    let impl = {dummy_impl with depends} in
+    Cudf.add_package universe impl;
+    impl
 end

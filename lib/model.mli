@@ -30,7 +30,7 @@ module Make (Context : S.CONTEXT) : sig
       This is used if the user requests multiple packages on the command line
       (the single [impl] will also be virtual). *)
 
-  val virtual_impl : depends:Cudf_types.pkgname list -> unit -> impl
+  val virtual_impl : universe:Cudf.universe -> depends:Cudf_types.pkgname list -> unit -> impl
   (** [virtual_impl ~context ~depends] is a virtual package which just depends
       on [depends]. This is used if the user requests multiple packages on the
       command line - each requested package becomes a dependency of the virtual
