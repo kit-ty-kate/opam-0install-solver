@@ -133,7 +133,6 @@ let test st spec =
     let r =
       try fn st spec
       with OpamStd.Sys.Exit(60) ->  (* Timeout; already reported on console *)
-        incr errors;
         Error (lazy "(timeout)")
     in
     let t1 = Unix.gettimeofday () in
@@ -164,6 +163,7 @@ let () =
   test st ["dune"; "irmin.0.10.0"; "cohttp"; "git"; "ocaml.4.04.2"];
   test st ["datakit-ci"; "ocaml.4.08.1"];
   test st ["datakit-ci"; "ocaml.4.07.1"];
+  test st ["opam-core.2.0.0~rc"; "ocaml.4.09.0"];
   let available = Lazy.force st.OpamStateTypes.available_packages
                   |> OpamPackage.Set.to_seq
                   |> Seq.map OpamPackage.name
@@ -180,8 +180,8 @@ let () =
     let j = Random.int (Array.length available) in
     test st ["ocaml"; OpamPackage.Name.to_string available.(i); OpamPackage.Name.to_string available.(j)]
   done;
-  if !errors = 0 then Fmt.pr "@.All tests passed@."
+  if !errors = 0 then Fmt.pr "@.All tests %a.@." Fmt.(styled `Green string) "passed"
   else (
-    Fmt.pr "@.%a: %d error(s)@." Fmt.(styled `Red string) "Tests failed" !errors;
+    Fmt.pr "@.Tests failed: %a@." Fmt.(styled `Red (fmt "%d error(s)")) !errors;
     exit 1
   )
