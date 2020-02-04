@@ -186,7 +186,7 @@ module Make (Context : S.CONTEXT) = struct
 
   let virtual_impl ~universe ~depends () =
     let depends = List.map (fun pkg -> [(pkg, None)]) depends in
-    let impl = {dummy_impl with depends} in
+    let impl = {dummy_impl with package = "??"; depends} in
     Cudf.add_package universe impl;
     impl
 end
