@@ -3,7 +3,8 @@ module Make (Context : S.CONTEXT) = struct
      record whether to negate the result here. *)
   type restriction = {
     kind : [ `Ensure | `Prevent ];
-    expr : Cudf_types.vpkgformula;
+    expr : (Cudf_types.relop * Cudf_types.version) list;
+    (* NOTE: each list is a raw or the list is an OR case (see Cudf_types.vpkgforula) *)
   }
 
   type real_role = {
@@ -94,20 +95,19 @@ module Make (Context : S.CONTEXT) = struct
   let list_deps ~context ~importance deps =
     let open OpamTypes in
     let rec aux = function
-      | Empty -> []
-      | Atom (name, restrictions) ->
+      | [] -> []
+      | [[(name, restrictions)]] ->
         let drole = role context name in
         [{ drole; restrictions; importance }]
-      | Block x -> aux x
-      | And (x, y) -> aux x @ aux y
-      | Or _ as o ->
+      | [x]::y -> aux [x] @ aux y
+      | [_::_::_] as o ->
         let impls = group_ors o in
         let drole = virtual_role impls in
         (* Essential because we must apply a restriction, even if its
            components are only restrictions. *)
         [{ drole; restrictions = []; importance = `Essential }]
     and group_ors = function
-      | Or (x, y) -> group_ors x @ group_ors y
+      | [x::y] -> group_ors [x] @ group_ors y
       | expr -> [VirtualImpl (fresh_id (), aux expr)]
     in
     aux deps
@@ -141,19 +141,11 @@ module Make (Context : S.CONTEXT) = struct
      list). But for the version expressions inside, it's wrong: a conflict with no expression
      conflicts with all versions and should restrict the choice to nothing, not to everything.
      So, we just tag the formula as [`Prevent] instead of negating it. *)
-  let prevent f =
-    OpamFormula.neg Fun.id f
-    |> OpamFormula.map (fun (a, expr) -> OpamFormula.Atom (a, [{ kind = `Prevent; expr }]))
+  let prevent l =
+    List.map (fun pkg -> { kind = `Prevent; expr = [pkg] }) l
 
-  let ensure =
-    OpamFormula.map (fun (name, vexpr) ->
-        let rlist =
-          match vexpr with
-          | OpamFormula.Empty -> []
-          | r                 -> [{ kind = `Ensure; expr = r }]
-        in
-        OpamFormula.Atom (name, rlist)
-      )
+  let ensure l =
+    List.map (fun pkg -> { kind = `Ensure; expr = pkg }) l (* TODO: Might contain depopts? *)
 
   (* Get all the candidates for a role. *)
   let implementations role =
@@ -172,7 +164,6 @@ module Make (Context : S.CONTEXT) = struct
               let requires =
                 let make_deps importance xform data =
                   data
-                  |> Context.filter_deps context pkg
                   |> xform
                   |> list_deps ~context ~importance
                 in
@@ -230,7 +221,7 @@ module Make (Context : S.CONTEXT) = struct
       | Some f -> Some ({ kind = `Ensure; expr = OpamFormula.Atom f })
 
   let id_of_impl = function
-    | RealImpl impl -> OpamPackage.to_string impl.pkg
+    | RealImpl impl -> impl.pkg.Cudf.package^"."^string_of_int impl.pkg.Cudf.version
     | VirtualImpl _ -> "virtual"
     | Dummy -> "-"
 
@@ -244,12 +235,12 @@ module Make (Context : S.CONTEXT) = struct
     | `Lt -> "<"
     | `Neq -> "<>"
 
-  let string_of_version_formula = OpamFormula.string_of_formula (function (rel, v) ->
-      Printf.sprintf "%s %s" (string_of_op rel) (OpamPackage.Version.to_string v)
+  let string_of_version_formula = List.map (fun (rel, v) ->
+      Printf.sprintf "%s %s" (string_of_op rel) (string_of_int v)
     )
 
   let string_of_restriction = function
-    | { kind = `Prevent; expr = OpamFormula.Empty } -> "conflict with all versions"
+    | { kind = `Prevent; expr = [] } -> "conflict with all versions"
     | { kind = `Prevent; expr } -> Fmt.strf "not(%s)" (string_of_version_formula expr)
     | { kind = `Ensure; expr } -> string_of_version_formula expr
 
