@@ -1,54 +1,61 @@
+let fop : Cudf_types.relop -> int -> int -> bool = function
+  | `Eq -> (=)
+  | `Neq -> (<>)
+  | `Geq -> (>=)
+  | `Gt -> (>)
+  | `Leq -> (<=)
+  | `Lt -> (<)
+
 module Context = struct
-  type rejection = UserConstraint of OpamFormula.atom
+  type rejection = UserConstraint of Cudf_types.vpkg
 
   type t = {
-    st : OpamStateTypes.unlocked OpamStateTypes.switch_state;           (* To load the opam files *)
-    pkgs : OpamTypes.version_set OpamTypes.name_map;                    (* All available versions *)
-    constraints : OpamFormula.version_constraint OpamTypes.name_map;    (* User-provided constraints *)
-    test : OpamPackage.Name.Set.t;
+    universe : Cudf.universe;
+    constraints : (Cudf_types.pkgname * (Cudf_types.relop * Cudf_types.version)) list;
   }
 
   let load t pkg =
-    try OpamSwitchState.opam t.st pkg
-    with Not_found ->
-      failwith (Format.asprintf "Package %S not found!" (OpamPackage.to_string pkg))
+    Cudf.lookup_package t.universe pkg
 
   let user_restrictions t name =
-    OpamPackage.Name.Map.find_opt name t.constraints
-
-  let env t pkg v =
-    if List.mem v OpamPackageVar.predefined_depends_variables then None
-    else (
-      let r = OpamPackageVar.resolve_switch ~package:pkg t.st v in
-      if r = None then OpamConsole.warning "Unknown variable %S" (OpamVariable.Full.to_string v);
-      r
-    )
-
-  let filter_deps t pkg f =
-    let test = OpamPackage.Name.Set.mem (OpamPackage.name pkg) t.test in
-    f
-    |> OpamFilter.partial_filter_formula (env t pkg)
-    |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:false ~dev:false ~default:false
+    List.fold_left (fun acc (name', c) ->
+      if String.equal name name' then
+        c :: acc
+      else
+        acc
+    ) [] t.constraints
 
   let candidates t name =
     let user_constraints = user_restrictions t name in
-    match OpamPackage.Name.Map.find_opt name t.pkgs with
-    | Some versions ->
-      OpamPackage.Version.Set.to_seq versions
-      |> List.of_seq
-      |> List.rev       (* Higher versions are preferred. *)
-      |> List.map (fun v ->
-          match user_constraints with
-          | Some test when not (OpamFormula.check_version_formula (OpamFormula.Atom test) v) ->
-            v, Some (UserConstraint (name, Some test))  (* Reject *)
-          | _ -> v, None
+    match Cudf.lookup_packages t.universe name with
+    | [] ->
+        OpamConsole.log "opam-zi" "Package %S not found!" name;
+        []
+    | versions ->
+        List.fast_sort (fun pkg1 pkg2 -> compare (pkg2.Cudf.version : int) pkg1.Cudf.version) versions
+        |> List.map (fun pkg ->
+          let rec check_constr = function
+            | [] -> (pkg.Cudf.version, None)
+            | ((op, v)::c) ->
+                if fop op pkg.Cudf.version v then
+                  check_constr c
+                else
+                  (pkg.Cudf.version, Some (UserConstraint (name, Some (op, v))))  (* Reject *)
+          in
+          check_constr user_constraints
         )
-    | None ->
-      OpamConsole.log "opam-zi" "Package %S not found!" (OpamPackage.Name.to_string name);
-      []
+
+  let print_constr = function
+    | None -> ""
+    | Some (`Eq, v) -> "="^string_of_int v
+    | Some (`Neq, v) -> "!="^string_of_int v
+    | Some (`Geq, v) -> ">="^string_of_int v
+    | Some (`Gt, v) -> ">"^string_of_int v
+    | Some (`Leq, v) -> "<="^string_of_int v
+    | Some (`Lt, v) -> "<"^string_of_int v
 
   let pp_rejection f = function
-    | UserConstraint x -> Fmt.pf f "Rejected by user-specified constraint %s" (OpamFormula.string_of_atom x)
+    | UserConstraint (name, c) -> Fmt.pf f "Rejected by user-specified constraint %s%s" name (print_constr c)
 end
 
 module Input = Model.Make(Context)
@@ -70,9 +77,8 @@ type t = Context.t
 type selections = Solver.Output.t
 type diagnostics = Input.requirements   (* So we can run another solve *)
 
-let create ?(test=OpamPackage.Name.Set.empty) ~constraints st =
-  let pkgs = Lazy.force st.OpamStateTypes.available_packages |> OpamPackage.to_map in
-  { Context.st; pkgs; constraints; test }
+let create ~constraints universe =
+  { Context.universe; constraints; }
 
 let solve context pkgs =
   let req = requirements ~context pkgs in
