@@ -1,4 +1,4 @@
 (library
  (name opam_zi)
- (public_name opam-zi)
- (libraries cudf opam-state zeroinstall_solver fmt))
+ (public_name opam-0install-cudf)
+ (libraries cudf opam-state 0install-solver fmt))

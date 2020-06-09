@@ -26,17 +26,22 @@ module Make (Context : S.CONTEXT) = struct
     | Real of {context : Context.t; name : Cudf_types.pkgname}
     | Virtual of int * impl list
 
-  let rec format_version = function
-    | RealImpl impl -> string_of_int impl.pkg.Cudf.version
-    | VirtualImpl (_, deps) -> String.concat "&" (List.map (fun d -> Fmt.to_to_string pp_role d.drole) deps)
-    | Dummy -> "(no version)"
+  let rec pp_version fmt = function
+    | RealImpl impl -> Fmt.int fmt impl.pkg.Cudf.version
+    | VirtualImpl (_, deps) -> Fmt.string fmt (String.concat "&" (List.map (fun d -> Fmt.to_to_string pp_role d.drole) deps))
+    | Dummy -> Fmt.string fmt "(no version)"
   and pp_impl fmt = function
     | RealImpl impl -> Fmt.string fmt impl.pkg.Cudf.package
-    | VirtualImpl _ as x -> Fmt.string fmt (format_version x)
+    | VirtualImpl _ as x -> pp_version fmt x
     | Dummy -> Fmt.string fmt "(no solution found)"
   and pp_role fmt = function
     | Real t -> Fmt.string fmt t.name
     | Virtual (_, impls) -> Fmt.pf fmt "%a" Fmt.(list ~sep:(unit "|") pp_impl) impls
+
+  let pp_impl_long fmt = function
+    | RealImpl impl -> Fmt.pf fmt "%s.%d" impl.pkg.Cudf.package impl.pkg.Cudf.version
+    | VirtualImpl _ as x -> pp_version fmt x
+    | Dummy -> Fmt.string fmt "(no solution found)"
 
   module Role = struct
     type t = role
